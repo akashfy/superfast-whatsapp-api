@@ -193,40 +193,36 @@ func main() {
 		if err := c.BodyParser(&req); err != nil {
 			return c.Status(400).JSON(fiber.Map{"error": err.Error()})
 		}
-
 		jid := parseJID(req.Number)
-		waAPI.Client.SendChatPresence(context.Background(), jid, types.ChatPresenceComposing, types.ChatPresenceMediaText)
 
-		data, err := downloadFile(req.URL)
-		if err != nil {
-			return c.Status(500).JSON(fiber.Map{"error": "Failed to download image: " + err.Error()})
-		}
+		// Send non-blocking response to caller
+		go func() {
+			data, err := downloadFile(req.URL)
+			if err != nil {
+				fmt.Printf("❌ Download Failed: %v\n", err)
+				return
+			}
+			resp, err := waAPI.Client.Upload(context.Background(), data, whatsmeow.MediaImage)
+			if err != nil {
+				fmt.Printf("❌ Upload Failed: %v\n", err)
+				return
+			}
+			msg := &waE2E.Message{
+				ImageMessage: &waE2E.ImageMessage{
+					Caption:       proto.String(req.Caption),
+					URL:           proto.String(resp.URL),
+					DirectPath:    proto.String(resp.DirectPath),
+					MediaKey:      resp.MediaKey,
+					Mimetype:      proto.String("image/png"),
+					FileEncSHA256: resp.FileEncSHA256,
+					FileSHA256:    resp.FileSHA256,
+					FileLength:    proto.Uint64(uint64(len(data))),
+				},
+			}
+			waAPI.Client.SendMessage(context.Background(), jid, msg)
+		}()
 
-		resp, err := waAPI.Client.Upload(context.Background(), data, whatsmeow.MediaImage)
-		if err != nil {
-			return c.Status(500).JSON(fiber.Map{"error": "Failed to upload image: " + err.Error()})
-		}
-
-		msg := &waE2E.Message{
-			ImageMessage: &waE2E.ImageMessage{
-				Caption:       proto.String(req.Caption),
-				Mimetype:      proto.String(http.DetectContentType(data)),
-				URL:           proto.String(resp.URL),
-				DirectPath:    proto.String(resp.DirectPath),
-				MediaKey:      resp.MediaKey,
-				FileLength:    proto.Uint64(uint64(len(data))),
-				FileSHA256:    resp.FileSHA256,
-				FileEncSHA256: resp.FileEncSHA256,
-			},
-		}
-
-		_, err = waAPI.Client.SendMessage(context.Background(), jid, msg)
-		waAPI.Client.SendChatPresence(context.Background(), jid, types.ChatPresencePaused, types.ChatPresenceMediaText)
-
-		if err != nil {
-			return c.Status(500).JSON(fiber.Map{"error": err.Error()})
-		}
-		return c.JSON(fiber.Map{"success": true})
+		return c.JSON(fiber.Map{"success": true, "status": "processing"})
 	})
 
 	// 8. Send Video
@@ -239,40 +235,36 @@ func main() {
 		if err := c.BodyParser(&req); err != nil {
 			return c.Status(400).JSON(fiber.Map{"error": err.Error()})
 		}
-
 		jid := parseJID(req.Number)
-		waAPI.Client.SendChatPresence(context.Background(), jid, types.ChatPresenceComposing, types.ChatPresenceMediaAudio) // Video takes time
 
-		data, err := downloadFile(req.URL)
-		if err != nil {
-			return c.Status(500).JSON(fiber.Map{"error": "Failed to download video: " + err.Error()})
-		}
+		// Send non-blocking response to caller
+		go func() {
+			data, err := downloadFile(req.URL)
+			if err != nil {
+				fmt.Printf("❌ Download Failed: %v\n", err)
+				return
+			}
+			resp, err := waAPI.Client.Upload(context.Background(), data, whatsmeow.MediaVideo)
+			if err != nil {
+				fmt.Printf("❌ Upload Failed: %v\n", err)
+				return
+			}
+			msg := &waE2E.Message{
+				VideoMessage: &waE2E.VideoMessage{
+					Caption:       proto.String(req.Caption),
+					URL:           proto.String(resp.URL),
+					DirectPath:    proto.String(resp.DirectPath),
+					MediaKey:      resp.MediaKey,
+					Mimetype:      proto.String("video/mp4"),
+					FileEncSHA256: resp.FileEncSHA256,
+					FileSHA256:    resp.FileSHA256,
+					FileLength:    proto.Uint64(uint64(len(data))),
+				},
+			}
+			waAPI.Client.SendMessage(context.Background(), jid, msg)
+		}()
 
-		resp, err := waAPI.Client.Upload(context.Background(), data, whatsmeow.MediaVideo)
-		if err != nil {
-			return c.Status(500).JSON(fiber.Map{"error": "Failed to upload video: " + err.Error()})
-		}
-
-		msg := &waE2E.Message{
-			VideoMessage: &waE2E.VideoMessage{
-				Caption:       proto.String(req.Caption),
-				Mimetype:      proto.String(http.DetectContentType(data)),
-				URL:           proto.String(resp.URL),
-				DirectPath:    proto.String(resp.DirectPath),
-				MediaKey:      resp.MediaKey,
-				FileLength:    proto.Uint64(uint64(len(data))),
-				FileSHA256:    resp.FileSHA256,
-				FileEncSHA256: resp.FileEncSHA256,
-			},
-		}
-
-		_, err = waAPI.Client.SendMessage(context.Background(), jid, msg)
-		waAPI.Client.SendChatPresence(context.Background(), jid, types.ChatPresencePaused, types.ChatPresenceMediaAudio)
-
-		if err != nil {
-			return c.Status(500).JSON(fiber.Map{"error": err.Error()})
-		}
-		return c.JSON(fiber.Map{"success": true})
+		return c.JSON(fiber.Map{"success": true, "status": "processing"})
 	})
 
 	// 9. Send Audio
