@@ -390,13 +390,42 @@ func eventHandler(evt interface{}) {
 			return
 		}
 
+		// Resolve Contact (Handle LID -> Phone Number)
+		sender := evt.Info.Sender
+		realJID := sender
+		pushName := evt.Info.PushName
+
+		// If it's an LID (Linked Device ID), try to find the real phone number
+		if sender.Server == "lid" {
+			if waAPI.Client.Store.LIDs != nil {
+				if pn, err := waAPI.Client.Store.LIDs.GetPNForLID(context.Background(), sender); err == nil && !pn.IsEmpty() {
+					realJID = pn
+				}
+			}
+			if waAPI.Client.Store.Contacts != nil {
+				if contact, err := waAPI.Client.Store.Contacts.GetContact(context.Background(), sender); err == nil && contact.Found {
+					if contact.PushName != "" {
+						pushName = contact.PushName
+					}
+				} else if contact, err := waAPI.Client.Store.Contacts.GetContact(context.Background(), realJID); err == nil && contact.Found {
+					if contact.PushName != "" {
+						pushName = contact.PushName
+					}
+				}
+			}
+		}
+
+		// Extract pure phone number
+		phone := strings.Split(realJID.User, ":")[0]
+
 		// Prepare payload
 		payload := map[string]interface{}{
 			"event":     "message",
 			"id":        evt.Info.ID,
-			"push_name": evt.Info.PushName,
-			"number":    strings.Split(evt.Info.Sender.User, ":")[0],
-			"message":   evt.Message.GetConversation(), // Simplest text extraction, expand for media
+			"push_name": pushName,
+			"number":    phone,
+			"jid":       realJID.String(),
+			"message":   evt.Message.GetConversation(),
 			"timestamp": evt.Info.Timestamp.Unix(),
 		}
 
@@ -404,26 +433,36 @@ func eventHandler(evt interface{}) {
 		if payload["message"] == "" {
 			payload["message"] = evt.Message.GetExtendedTextMessage().GetText()
 		}
-		// If still empty (media etc), just use empty string or add media handling logic here
 
-		// Send to Webhook if configured
+		fmt.Printf("📩 [%s] %s: %s\n", payload["push_name"], payload["number"], payload["message"])
+
 		if waAPI.WebhookURL != "" {
 			go sendWebhook(payload)
 		} else {
-			fmt.Printf("📩 Received Message from %s: %s (No Webhook Configured)\n", payload["number"], payload["message"])
+			fmt.Println(" (No Webhook Configured)")
 		}
 	}
 }
 
 func sendWebhook(payload map[string]interface{}) {
 	jsonBody, _ := json.Marshal(payload)
-	resp, err := http.Post(waAPI.WebhookURL, "application/json", bytes.NewBuffer(jsonBody))
-	if err != nil {
-		fmt.Printf("❌ Webhook Error: %v\n", err)
-		return
+
+	// Retry Logic (3 Attempts)
+	for i := 0; i < 3; i++ {
+		resp, err := http.Post(waAPI.WebhookURL, "application/json", bytes.NewBuffer(jsonBody))
+		if err == nil {
+			defer resp.Body.Close()
+			if resp.StatusCode == 200 {
+				fmt.Printf("✅ Webhook Sent: %s -> %s\n", payload["number"], waAPI.WebhookURL)
+				return // Success
+			}
+			fmt.Printf("⚠️ Webhook Failed (Status %d): Retrying...\n", resp.StatusCode)
+		} else {
+			fmt.Printf("❌ Webhook Error: %v. Retrying...\n", err)
+		}
+		time.Sleep(2 * time.Second) // Wait before retry
 	}
-	defer resp.Body.Close()
-	fmt.Printf("✅ Webhook Sent: %s -> %s\n", payload["number"], waAPI.WebhookURL)
+	fmt.Println("❌ Webhook Failed after 3 attempts.")
 }
 
 func parseJID(arg string) types.JID {
