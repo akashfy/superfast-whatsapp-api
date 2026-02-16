@@ -318,11 +318,24 @@ func main() {
 		}
 
 		_, err = waAPI.Client.SendMessage(context.Background(), jid, msg)
-		waAPI.Client.SendChatPresence(context.Background(), jid, types.ChatPresencePaused, types.ChatPresenceMediaAudio)
+		return c.JSON(fiber.Map{"success": true})
+	})
 
-		if err != nil {
-			return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	// 10. Presence (Typing Status)
+	api.Post("/presence", func(c *fiber.Ctx) error {
+		var req struct {
+			Number string `json:"number"`
+			Status string `json:"status"` // "composing" or "paused"
 		}
+		if err := c.BodyParser(&req); err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": err.Error()})
+		}
+		jid := parseJID(req.Number)
+		presence := types.ChatPresenceComposing
+		if req.Status == "paused" {
+			presence = types.ChatPresencePaused
+		}
+		waAPI.Client.SendChatPresence(context.Background(), jid, presence, types.ChatPresenceMediaText)
 		return c.JSON(fiber.Map{"success": true})
 	})
 
