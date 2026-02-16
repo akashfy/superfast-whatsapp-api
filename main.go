@@ -460,23 +460,34 @@ func eventHandler(evt interface{}) {
 	}
 }
 
+var httpClient = &http.Client{
+	Timeout: 10 * time.Second,
+	Transport: &http.Transport{
+		MaxIdleConns:        100,
+		IdleConnTimeout:     90 * time.Second,
+		MaxIdleConnsPerHost: 20,
+	},
+}
+
 func sendWebhook(payload map[string]interface{}) {
 	jsonBody, _ := json.Marshal(payload)
 
-	// Retry Logic (3 Attempts)
 	for i := 0; i < 3; i++ {
-		resp, err := http.Post(waAPI.WebhookURL, "application/json", bytes.NewBuffer(jsonBody))
+		req, _ := http.NewRequest("POST", waAPI.WebhookURL, bytes.NewBuffer(jsonBody))
+		req.Header.Set("Content-Type", "application/json")
+
+		resp, err := httpClient.Do(req)
 		if err == nil {
 			defer resp.Body.Close()
 			if resp.StatusCode == 200 {
 				fmt.Printf("✅ Webhook Sent: %s -> %s\n", payload["number"], waAPI.WebhookURL)
-				return // Success
+				return
 			}
 			fmt.Printf("⚠️ Webhook Failed (Status %d): Retrying...\n", resp.StatusCode)
 		} else {
 			fmt.Printf("❌ Webhook Error: %v. Retrying...\n", err)
 		}
-		time.Sleep(2 * time.Second) // Wait before retry
+		time.Sleep(500 * time.Millisecond) // Faster retry
 	}
 	fmt.Println("❌ Webhook Failed after 3 attempts.")
 }
