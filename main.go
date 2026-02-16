@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -28,12 +30,13 @@ import (
 )
 
 type WhatsAppApi struct {
-	Client    *whatsmeow.Client
-	QR        string
-	Connected bool
-	Number    string
-	StartTime time.Time
-	mu        sync.RWMutex
+	Client     *whatsmeow.Client
+	QR         string
+	Connected  bool
+	Number     string
+	WebhookURL string
+	StartTime  time.Time
+	mu         sync.RWMutex
 }
 
 var waAPI = &WhatsAppApi{}
@@ -53,6 +56,7 @@ func main() {
 	clientLog := waLog.Stdout("Client", "ERROR", true)
 	waAPI.Client = whatsmeow.NewClient(deviceStore, clientLog)
 	waAPI.Client.AddEventHandler(eventHandler)
+	waAPI.WebhookURL = os.Getenv("WEBHOOK_URL")
 	waAPI.StartTime = time.Now()
 
 	// Initial connect if session exists
@@ -368,7 +372,7 @@ func startLogin() {
 }
 
 func eventHandler(evt interface{}) {
-	switch evt.(type) {
+	switch evt := evt.(type) {
 	case *events.Connected:
 		waAPI.mu.Lock()
 		waAPI.Connected = true
@@ -380,7 +384,46 @@ func eventHandler(evt interface{}) {
 		waAPI.mu.Lock()
 		waAPI.Connected = false
 		waAPI.mu.Unlock()
+	case *events.Message:
+		// Ignore status broadcasts and unwanted messages
+		if evt.Info.IsFromMe || evt.Info.IsGroup || evt.Info.Category == "peer_broadcast_notification" {
+			return
+		}
+
+		// Prepare payload
+		payload := map[string]interface{}{
+			"event":     "message",
+			"id":        evt.Info.ID,
+			"push_name": evt.Info.PushName,
+			"number":    strings.Split(evt.Info.Sender.User, ":")[0],
+			"message":   evt.Message.GetConversation(), // Simplest text extraction, expand for media
+			"timestamp": evt.Info.Timestamp.Unix(),
+		}
+
+		// Extended Text Message support
+		if payload["message"] == "" {
+			payload["message"] = evt.Message.GetExtendedTextMessage().GetText()
+		}
+		// If still empty (media etc), just use empty string or add media handling logic here
+
+		// Send to Webhook if configured
+		if waAPI.WebhookURL != "" {
+			go sendWebhook(payload)
+		} else {
+			fmt.Printf("📩 Received Message from %s: %s (No Webhook Configured)\n", payload["number"], payload["message"])
+		}
 	}
+}
+
+func sendWebhook(payload map[string]interface{}) {
+	jsonBody, _ := json.Marshal(payload)
+	resp, err := http.Post(waAPI.WebhookURL, "application/json", bytes.NewBuffer(jsonBody))
+	if err != nil {
+		fmt.Printf("❌ Webhook Error: %v\n", err)
+		return
+	}
+	defer resp.Body.Close()
+	fmt.Printf("✅ Webhook Sent: %s -> %s\n", payload["number"], waAPI.WebhookURL)
 }
 
 func parseJID(arg string) types.JID {
