@@ -84,6 +84,34 @@ The API listens on **`:3000`**.
 
 ---
 
+### 🔌 Incoming Webhooks (2-Way Communication)
+Connect your AI bots or backend services using a robust, real-time webhook system.
+
+#### Configuration
+Set the `WEBHOOK_URL` environment variable to start receiving messages:
+- **Docker Compose:** Add `- WEBHOOK_URL=http://your-server:5000/webhook` in environment section.
+- **Manual:** `export WEBHOOK_URL=http://your-server:5000/webhook`
+
+#### Features
+- **Smart Resolution:** Automatically maps WhatsApp LIDs to real phone numbers.
+- **Push Name Support:** Receives the sender's public WhatsApp profile name.
+- **Reliable Delivery:** Automatic **3x retry** logic if your webhook server is temporarily down.
+
+#### 📩 Webhook Payload Structure
+```json
+{
+  "event": "message",
+  "id": "3EB0...",
+  "number": "916262255556",
+  "push_name": "Akash Yadav",
+  "message": "Hi, how are you?",
+  "timestamp": 1708105000,
+  "jid": "916262255556@s.whatsapp.net"
+}
+```
+
+---
+
 ### 🛠️ Tech Stack
 - **Language:** Golang (1.26)
 - **Web Framework:** Fiber (v2) - *Fastest Go Web Framework*
