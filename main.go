@@ -415,6 +415,9 @@ func eventHandler(evt interface{}) {
 			}
 		}
 
+		// Start Typing Indicator immediately
+		waAPI.Client.SendChatPresence(context.Background(), sender, types.ChatPresenceComposing, types.ChatPresenceMediaText)
+
 		// Extract pure phone number
 		phone := strings.Split(realJID.User, ":")[0]
 
