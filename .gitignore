@@ -1,0 +1,28 @@
+# Binaries
+bot
+gobot
+main
+*.exe
+*.dll
+
+# Database / Auth
+sessions.db
+sessions.db-journal
+auth/
+credentials/
+*.db
+
+# Environment
+.env
+.env.local
+
+# Docker
+docker-compose.override.yml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Go
+vendor/
+go.work

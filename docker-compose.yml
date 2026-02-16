@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  go-whatsapp-api:
+    image: akashyadav758/superfast-whatsapp-api:latest
+    container_name: superfast-whatsapp-api
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./sessions.db:/app/sessions.db
+    environment:
+      - TZ=Asia/Kolkata
